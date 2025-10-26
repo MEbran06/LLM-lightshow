@@ -1,3 +1,4 @@
 .vscode/
-esp32-llm/build
-sdspi/build
+build/
+.cache/
+managed_components/
