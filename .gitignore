@@ -1,4 +1,7 @@
 .vscode/
+build/
+.cache/
+managed_components/
 esp32-llm/build
 sdspi/build
 shift_register/build
