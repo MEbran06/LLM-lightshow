@@ -1,3 +1,4 @@
+# Taken from llama code and lightly modified
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
 
@@ -5,9 +6,10 @@ import os
 import struct
 import argparse
 from typing import List
-from sentencepiece import SentencePieceProcessor, SentencePieceTrainer
 
-TOKENIZER_MODEL = "tokenizer.model"  # default llama sentencepiece tokenizer model
+from sentencepiece import SentencePieceProcessor
+
+TOKENIZER_MODEL = "tokenizer.model" # the llama sentencepiece tokenizer model
 
 class Tokenizer:
     def __init__(self, tokenizer_model=None):
@@ -21,6 +23,7 @@ class Tokenizer:
         self.bos_id: int = self.sp_model.bos_id()
         self.eos_id: int = self.sp_model.eos_id()
         self.pad_id: int = self.sp_model.pad_id()
+        #print(f"#words: {self.n_words} - BOS ID: {self.bos_id} - EOS ID: {self.eos_id}")
         assert self.sp_model.vocab_size() == self.sp_model.get_piece_size()
 
     def encode(self, s: str, bos: bool, eos: bool) -> List[int]:
@@ -36,67 +39,40 @@ class Tokenizer:
         return self.sp_model.decode(t)
 
     def export(self):
-        """Export tokenizer model to .bin for llama2.c"""
+
+        # get all the tokens (postprocessed) and their scores as floats
         tokens, scores = [], []
         for i in range(self.n_words):
+
+            # decode the token and light postprocessing
             t = self.sp_model.id_to_piece(i)
             s = self.sp_model.get_score(i)
             if i == self.bos_id:
                 t = '\n<s>\n'
             elif i == self.eos_id:
                 t = '\n</s>\n'
-            t = t.replace('▁', ' ')
-            b = t.encode('utf-8')
+            t = t.replace('▁', ' ') # sentencepiece uses this character as whitespace
+            b = t.encode('utf-8') # bytes of this token, utf-8 encoded
+
             tokens.append(b)
             scores.append(s)
 
+        # record the max token length
         max_token_length = max(len(t) for t in tokens)
-        tokenizer_bin = self.model_path.replace('.model', '.bin')
 
+        # write to a binary file
+        # the tokenizer.bin file is the same as .model file, but .bin
+        tokenizer_bin = self.model_path.replace('.model', '.bin')
         with open(tokenizer_bin, 'wb') as f:
             f.write(struct.pack("I", max_token_length))
-            for bytes_, score in zip(tokens, scores):
-                f.write(struct.pack("fI", score, len(bytes_)))
-                f.write(bytes_)
-
-        print(f"✅ Exported tokenizer to {tokenizer_bin}")
+            for bytes, score in zip(tokens, scores):
+                f.write(struct.pack("fI", score, len(bytes)))
+                f.write(bytes)
 
 if __name__ == "__main__":
-    # Use path relative to script location
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    train_dir = os.path.join(base_dir, "../dataset/train")
-    corpus_path = os.path.join(train_dir, "corpus.txt")
-    prefix = os.path.join(train_dir, "trained_corpus")
-    vocab_size = 2048
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-t", "--tokenizer-model", type=str, help="optional path to custom tokenizer ")
+    args = parser.parse_args()
 
-    if not os.path.exists(train_dir):
-        raise FileNotFoundError(f"❌ Training directory not found: {train_dir}")
-
-    txt_files = [os.path.join(train_dir, f) for f in os.listdir(train_dir) if f.endswith(".txt")]
-    if not txt_files:
-        raise FileNotFoundError(f"❌ No .txt files found in {train_dir}")
-
-    print(f"🚀 Found {len(txt_files)} training files. Combining into {corpus_path} ...")
-
-    with open(corpus_path, "w", encoding="utf-8") as outfile:
-        for fname in txt_files:
-            print(f"  ➕ Adding {os.path.basename(fname)}")
-            with open(fname, "r", encoding="utf-8") as infile:
-                outfile.write(infile.read() + "\n")
-
-    print(f"✅ Combined all training data into {corpus_path}")
-    print(f"🚀 Training tokenizer from {corpus_path} ...")
-
-    SentencePieceTrainer.train(
-        input=corpus_path,
-        model_prefix=prefix,
-        vocab_size=vocab_size,
-        character_coverage=1.0,
-        model_type="bpe"
-    )
-
-    print(f"✅ Tokenizer trained: {prefix}.model and {prefix}.vocab")
-
-    # Export to binary format for C
-    t = Tokenizer(f"{prefix}.model")
+    t = Tokenizer(args.tokenizer_model)
     t.export()
