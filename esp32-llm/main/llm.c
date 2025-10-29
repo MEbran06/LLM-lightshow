@@ -1018,7 +1018,7 @@ long time_in_ms()
 // ----------------------------------------------------------------------------
 // generation loop
 
-void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, char *prompt, int steps, generated_complete_cb cb_done)
+char** generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, char *prompt, int steps, generated_complete_cb cb_done)
 {
     char *empty_prompt = "";
     if (prompt == NULL)
@@ -1041,6 +1041,8 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
     int next;                     // will store the next token in the sequence
     int token = prompt_tokens[0]; // kick off with the first token in the prompt
     int pos = 0;                  // position in the sequence
+    char** tokens_gen = (char**)malloc(sizeof(char*)*24);
+    int i = 0;
     while (pos < steps)
     {
         // forward the transformer to get logits for the next token
@@ -1056,6 +1058,9 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
         {
             // otherwise sample the next token from the logits
             next = sample(sampler, logits);
+            tokens_gen[i] = (char*)malloc(sizeof(char)*10);
+            strcpy(tokens_gen[i], decode(tokenizer, token, next));
+            i++;
         }
         pos++;
 
@@ -1090,6 +1095,8 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
 
     free(prompt_tokens);
     ESP_LOGI(TAG, "Generate complete");
+
+    return tokens_gen;
 }
 
 void read_stdin(const char *guide, char *buffer, size_t bufsize)
